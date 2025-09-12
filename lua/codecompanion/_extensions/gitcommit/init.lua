@@ -161,12 +161,12 @@ local function setup_slash_commands(opts)
         stdout:close()
         stderr:close()
         if code == 0 then
-          chat:add_reference({
+          chat:add_context({
             role = "user",
             content = string.format("Selected commit (%s) full content:\n```\n%s\n```", choice.hash, output),
           }, "git", "<git_commit>")
         else
-          chat:add_reference(
+          chat:add_context(
             { role = "user", content = "Error: Failed to get commit content.\n" .. error_output },
             "git",
             "<git_error>"
@@ -230,11 +230,11 @@ local function setup_slash_commands(opts)
             end
           end
           if #items == 0 then
-            return chat:add_reference({ role = "user", content = "No commits found." }, "git", "<git_error>")
+            return chat:add_context({ role = "user", content = "Error: No commits found." }, "git", "<git_error>")
           end
           select_commit(chat, items)
         else
-          chat:add_reference(
+          chat:add_context(
             { role = "user", content = "Error: Failed to get git log\n" .. error_output },
             "git",
             "<git_error>"
@@ -266,7 +266,7 @@ local function setup_slash_commands(opts)
     description = "Select a commit and insert its full content (message + diff)",
     callback = function(chat)
       if not Git.is_repository() then
-        return chat:add_reference({ role = "user", content = "Error: Not in a git repository" }, "git", "<git_error>")
+        return chat:add_context({ role = "user", content = "Error: Not in a git repository" }, "git", "<git_error>")
       end
       get_commit_list(chat, opts)
     end,
@@ -480,6 +480,31 @@ return {
       merge = function(branch)
         local GitTool = require("codecompanion._extensions.gitcommit.tools.git").GitTool
         return GitTool.merge(branch)
+      end,
+
+      ---Push changes to remote repository
+      ---@param remote? string The remote to push to (e.g., origin)
+      ---@param branch? string The branch to push (defaults to current branch)
+      ---@param force? boolean Force push (DANGEROUS)
+      ---@param set_upstream? boolean Set upstream branch (default: true for auto-linking)
+      ---@param tags? boolean Push all tags
+      ---@param tag_name? string Single tag to push
+      push = function(remote, branch, force, set_upstream, tags, tag_name)
+        local GitTool = require("codecompanion._extensions.gitcommit.tools.git").GitTool
+        return GitTool.push(remote, branch, force, set_upstream, tags, tag_name)
+      end,
+
+      ---Generate release notes between tags
+      ---@param from_tag? string Starting tag (if not provided, uses second latest tag)
+      ---@param to_tag? string Ending tag (if not provided, uses latest tag)
+      ---@param format? string Format for release notes (markdown, plain, json)
+      ---@return boolean success
+      ---@return string output
+      ---@return string user_msg
+      ---@return string llm_msg
+      generate_release_notes = function(from_tag, to_tag, format)
+        local GitTool = require("codecompanion._extensions.gitcommit.tools.git").GitTool
+        return GitTool.generate_release_notes(from_tag, to_tag, format)
       end,
     },
   },

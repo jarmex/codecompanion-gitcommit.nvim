@@ -489,26 +489,42 @@ end
 ---@param remote? string The name of the remote to push to (e.g., origin)
 ---@param branch? string The name of the branch to push (defaults to current branch)
 ---@param force? boolean Force push (DANGEROUS: overwrites remote history)
+---@param set_upstream? boolean Set the upstream branch for the current local branch
 ---@param tags? boolean Push all tags
----@param tag_name? string The name of a single tag to push
+---@param tag_name? string The name of a single tag to push (takes priority over tags parameter)
 ---@return boolean success, string output
-function GitTool.push(remote, branch, force, tags, tag_name)
+function GitTool.push(remote, branch, force, set_upstream, tags, tag_name)
   local cmd = "git push"
   if force then
     cmd = cmd .. " --force"
   end
-  if remote then
-    cmd = cmd .. " " .. vim.fn.shellescape(remote)
+  if set_upstream then
+    cmd = cmd .. " --set-upstream"
   end
-  if branch then
-    cmd = cmd .. " " .. vim.fn.shellescape(branch)
-  end
-  if tags then
-    cmd = cmd .. " --tags"
-  end
-  if tag_name then
+
+  -- Handle tag pushing - single tag takes priority over all tags
+  if tag_name and vim.trim(tag_name) ~= "" then
+    -- Push single tag: git push origin tag_name
+    if remote then
+      cmd = cmd .. " " .. vim.fn.shellescape(remote)
+    end
     cmd = cmd .. " " .. vim.fn.shellescape(tag_name)
+  elseif tags then
+    -- Push all tags: git push origin --tags
+    if remote then
+      cmd = cmd .. " " .. vim.fn.shellescape(remote)
+    end
+    cmd = cmd .. " --tags"
+  else
+    -- Regular branch push: git push origin branch
+    if remote then
+      cmd = cmd .. " " .. vim.fn.shellescape(remote)
+    end
+    if branch then
+      cmd = cmd .. " " .. vim.fn.shellescape(branch)
+    end
   end
+
   return execute_git_command(cmd)
 end
 
@@ -528,18 +544,28 @@ function GitTool.push_async(remote, branch, force, set_upstream, tags, tag_name,
   if set_upstream then
     table.insert(cmd, "--set-upstream")
   end
-  if tags then
-    table.insert(cmd, "--tags")
-  end
-  if tag_name then
-    table.insert(cmd, "tag")
+
+  -- Handle tag pushing - single tag takes priority over all tags
+  if tag_name and vim.trim(tag_name) ~= "" then
+    -- Push single tag: git push origin tag_name
+    if remote then
+      table.insert(cmd, remote)
+    end
     table.insert(cmd, tag_name)
-  end
-  if remote then
-    table.insert(cmd, remote)
-  end
-  if branch then
-    table.insert(cmd, branch)
+  elseif tags then
+    -- Push all tags: git push origin --tags
+    if remote then
+      table.insert(cmd, remote)
+    end
+    table.insert(cmd, "--tags")
+  else
+    -- Regular branch push with optional upstream setting
+    if remote then
+      table.insert(cmd, remote)
+    end
+    if branch then
+      table.insert(cmd, branch)
+    end
   end
 
   local stdout_lines = {}
@@ -687,6 +713,208 @@ function GitTool.merge(branch)
       return false, output
     end
   end
+end
+
+--- Generate release notes between two tags
+---@param from_tag string|nil Starting tag (if not provided, uses second latest tag)
+---@param to_tag string|nil Ending tag (if not provided, uses latest tag)
+---@param format string|nil Format (markdown, plain, json)
+---@return boolean success
+---@return string output
+---@return string user_msg
+---@return string llm_msg
+function GitTool.generate_release_notes(from_tag, to_tag, format)
+  format = format or "markdown"
+
+  -- Get all tags sorted by version
+  local success, tags_output = pcall(vim.fn.system, "git tag --sort=-version:refname")
+  if not success or vim.v.shell_error ~= 0 then
+    local msg = "Failed to get git tags: " .. (tags_output or "unknown error")
+    local user_msg = msg
+    local llm_msg = "<gitReleaseNotes>fail: " .. msg .. "</gitReleaseNotes>"
+    return false, msg, user_msg, llm_msg
+  end
+
+  local tags = {}
+  for tag in tags_output:gmatch("[^\r\n]+") do
+    if tag ~= "" then
+      table.insert(tags, tag)
+    end
+  end
+
+  if #tags < 1 then
+    local msg = "No tags found in repository"
+    local user_msg = msg
+    local llm_msg = "<gitReleaseNotes>fail: " .. msg .. "</gitReleaseNotes>"
+    return false, msg, user_msg, llm_msg
+  end
+
+  -- Determine tag range
+  if not to_tag then
+    to_tag = tags[1] -- Latest tag
+  end
+
+  if not from_tag then
+    if #tags < 2 then
+      local msg = "Cannot generate release notes: only one tag found. Please specify from_tag parameter."
+      local user_msg = msg
+      local llm_msg = "<gitReleaseNotes>fail: " .. msg .. "</gitReleaseNotes>"
+      return false, msg, user_msg, llm_msg
+    end
+    from_tag = tags[2] -- Second latest tag
+  end
+
+  -- Get commit range between tags
+  local range = from_tag .. ".." .. to_tag
+  local escaped_range = vim.fn.shellescape(range)
+  if not escaped_range or escaped_range == "" then
+    local msg = "Failed to escape tag range: " .. range
+    local user_msg = msg
+    local llm_msg = "<gitReleaseNotes>fail: " .. msg .. "</gitReleaseNotes>"
+    return false, msg, user_msg, llm_msg
+  end
+  local commit_cmd = "git log --pretty=format:'%h\x01%s\x01%an\x01%ad' --date=short " .. escaped_range
+  local success_commits, commits_output = pcall(vim.fn.system, commit_cmd)
+
+  if not success_commits or vim.v.shell_error ~= 0 then
+    local msg = "Failed to get commits between "
+      .. from_tag
+      .. " and "
+      .. to_tag
+      .. ": "
+      .. (commits_output or "unknown error")
+    local user_msg = msg
+    local llm_msg = "<gitReleaseNotes>fail: " .. msg .. "</gitReleaseNotes>"
+    return false, msg, user_msg, llm_msg
+  end
+
+  -- Parse commits
+  local commits = {}
+  for line in commits_output:gmatch("[^\r\n]+") do
+    local parts = vim.split(line, "\x01")
+    if #parts == 4 then
+      table.insert(commits, {
+        hash = parts[1],
+        subject = parts[2],
+        author = parts[3],
+        date = parts[4],
+      })
+    end
+  end
+
+  if #commits == 0 then
+    local msg = "No commits found between " .. from_tag .. " and " .. to_tag
+    local user_msg = msg
+    local llm_msg = "<gitReleaseNotes>success: " .. msg .. "</gitReleaseNotes>"
+    return true, msg, user_msg, llm_msg
+  end
+
+  -- Generate release notes based on format
+  local release_notes = ""
+  local user_msg = ""
+  local llm_msg = ""
+
+  if format == "markdown" then
+    local parts = { "# Release Notes: " .. from_tag .. " → " .. to_tag .. "\n\n" }
+    table.insert(parts, "## Changes (" .. #commits .. " commits)\n\n")
+
+    -- Group commits by type (conventional commits)
+    local features = {}
+    local fixes = {}
+    local others = {}
+
+    for _, commit in ipairs(commits) do
+      local type_match = commit.subject:match("^(%w+)%(.*%):") or commit.subject:match("^(%w+):")
+      if type_match then
+        if type_match == "feat" then
+          table.insert(features, commit)
+        elseif type_match == "fix" then
+          table.insert(fixes, commit)
+        else
+          table.insert(others, commit)
+        end
+      else
+        table.insert(others, commit)
+      end
+    end
+
+    -- Add features
+    if #features > 0 then
+      table.insert(parts, "### ✨ New Features\n\n")
+      for _, commit in ipairs(features) do
+        table.insert(parts, "- " .. commit.subject .. " (" .. commit.hash .. ")\n")
+      end
+      table.insert(parts, "\n")
+    end
+
+    -- Add fixes
+    if #fixes > 0 then
+      table.insert(parts, "### 🐛 Bug Fixes\n\n")
+      for _, commit in ipairs(fixes) do
+        table.insert(parts, "- " .. commit.subject .. " (" .. commit.hash .. ")\n")
+      end
+      table.insert(parts, "\n")
+    end
+
+    -- Add other changes
+    if #others > 0 then
+      table.insert(parts, "### 📝 Other Changes\n\n")
+      for _, commit in ipairs(others) do
+        table.insert(parts, "- " .. commit.subject .. " (" .. commit.hash .. ")\n")
+      end
+      table.insert(parts, "\n")
+    end
+
+    -- Add contributors
+    local contributors = {}
+    for _, commit in ipairs(commits) do
+      if not contributors[commit.author] then
+        contributors[commit.author] = 0
+      end
+      contributors[commit.author] = contributors[commit.author] + 1
+    end
+
+    table.insert(parts, "### 👥 Contributors\n\n")
+    local sorted_authors = {}
+    for author in pairs(contributors) do
+      table.insert(sorted_authors, author)
+    end
+    table.sort(sorted_authors, function(a, b)
+      if contributors[a] == contributors[b] then
+        return a < b
+      end
+      return contributors[a] > contributors[b]
+    end)
+    for _, author in ipairs(sorted_authors) do
+      table.insert(parts, "- " .. author .. " (" .. contributors[author] .. " commits)\n")
+    end
+    release_notes = table.concat(parts)
+  elseif format == "plain" then
+    local parts = { "Release Notes: " .. from_tag .. " → " .. to_tag .. "\n" }
+    table.insert(parts, "Changes (" .. #commits .. " commits):\n\n")
+    for _, commit in ipairs(commits) do
+      table.insert(parts, "- " .. commit.subject .. " (" .. commit.hash .. " by " .. commit.author .. ")\n")
+    end
+    release_notes = table.concat(parts)
+  elseif format == "json" then
+    local json_data = {
+      from_tag = from_tag,
+      to_tag = to_tag,
+      total_commits = #commits,
+      commits = commits,
+    }
+    release_notes = vim.fn.json_encode(json_data)
+  else
+    local msg = "Unsupported format: " .. format .. ". Supported formats: markdown, plain, json"
+    local user_msg = msg
+    local llm_msg = "<gitReleaseNotes>fail: " .. msg .. "</gitReleaseNotes>"
+    return false, msg, user_msg, llm_msg
+  end
+
+  user_msg = "Generated release notes for " .. from_tag .. " → " .. to_tag .. " (" .. #commits .. " commits)"
+  llm_msg = "<gitReleaseNotes>success: " .. user_msg .. "\n\n" .. release_notes .. "</gitReleaseNotes>"
+
+  return true, release_notes, user_msg, llm_msg
 end
 
 M.GitTool = GitTool

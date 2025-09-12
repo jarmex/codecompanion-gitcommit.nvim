@@ -207,6 +207,10 @@ Available write-access Git operations:
     end
 
     if operation == "push" then
+      -- If set_upstream is not explicitly specified, default to true for automatic remote tracking
+      if op_args.set_upstream == nil then
+        op_args.set_upstream = true
+      end
       return GitTool.push_async(
         op_args.remote,
         op_args.branch,
@@ -218,7 +222,7 @@ Available write-access Git operations:
       )
     end
 
-    -- 通过 pcall 安全执行操作，确保始终有响应
+    -- Safely execute operations through pcall to ensure there's always a response
     local ok, result = pcall(function()
       local success, output
 
@@ -249,7 +253,7 @@ Available write-access Git operations:
           -- Return success with instruction for AI to use the diff tool
           return {
             status = "success",
-            data = "No commit message provided. I need to generate a Conventional Commit compliant message. Please use the `@git_read diff --staged` tool to see the changes and then create an appropriate commit message.",
+            data = "No commit message provided. I need to generate a Conventional Commit compliant message. Please use the `@{git_read} diff --staged` tool to see the changes and then create an appropriate commit message.",
           }
         end
         success, output = GitTool.commit(message, op_args.amend)
