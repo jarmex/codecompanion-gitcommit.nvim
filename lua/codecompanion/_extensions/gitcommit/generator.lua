@@ -52,8 +52,29 @@ end
 ---@param payload table Request payload
 ---@param callback function Callback function
 local function send_http_request(client, adapter, payload, callback)
+  -- Ensure callback is valid
+  if type(callback) ~= "function" then
+    error("send_http_request: callback must be a function, got " .. type(callback))
+    return
+  end
+
   local accumulated = ""
   local has_error = false
+
+  -- Create a wrapper to ensure callback is only called once
+  local callback_called = false
+  local safe_callback = function(result, err)
+    if callback_called then
+      return
+    end
+    callback_called = true
+
+    if type(callback) == "function" then
+      callback(result, err)
+    else
+      vim.notify("Callback lost during HTTP request", vim.log.levels.ERROR)
+    end
+  end
 
   -- Prepare options for spinner events
   local request_opts = {
@@ -87,16 +108,16 @@ local function send_http_request(client, adapter, payload, callback)
         if not has_error then
           if accumulated ~= "" then
             local cleaned = Generator._clean_commit_message(accumulated)
-            callback(cleaned, nil)
+            safe_callback(cleaned, nil)
           else
-            callback(nil, "Generated content is empty")
+            safe_callback(nil, "Generated content is empty")
           end
         end
       end,
       on_error = function(err)
         has_error = true
         local error_msg = "HTTP request failed: " .. (err.message or vim.inspect(err))
-        callback(nil, error_msg)
+        safe_callback(nil, error_msg)
       end,
     })
   )
@@ -178,6 +199,12 @@ end
 ---@param commit_history? string[] Array of recent commit messages for context (optional)
 ---@param issue_id? string Issue ID extracted from branch name (optional)
 function Generator.generate_commit_message(diff, lang, commit_history, issue_id, callback)
+  -- Validate callback
+  if type(callback) ~= "function" then
+    error("Generator.generate_commit_message: callback must be a function, got " .. type(callback))
+    return
+  end
+
   -- 1. Resolve adapter
   local adapter = codecompanion_adapter.resolve(_adapter_name, {
     model = _model_name,

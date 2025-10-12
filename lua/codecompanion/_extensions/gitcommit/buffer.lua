@@ -197,8 +197,11 @@ function Buffer._generate_and_insert_commit_message(bufnr)
       commit_history = Git.get_commit_history(git_config.commit_history_count)
     end
 
+    -- Extract issue ID from branch name if enabled
+    local issue_id = Git.extract_issue_id_from_branch()
+
     -- Generate commit message
-    Generator.generate_commit_message(diff, lang, commit_history, function(result, error)
+    Generator.generate_commit_message(diff, lang, commit_history, issue_id, function(result, error)
       if error then
         vim.notify("Failed to generate commit message: " .. error, vim.log.levels.ERROR)
         return
