@@ -8,6 +8,7 @@ A Neovim plugin extension for CodeCompanion that generates AI-powered Git commit
 ## ✨ Features
 
 - 🤖 **AI Commit Generation** - Generate Conventional Commits compliant messages using CodeCompanion's LLM adapters
+- 🏷️ **Issue ID Extraction** - Automatically extract and include issue IDs from branch names in commit messages
 - 🛠️ **Git Tool Integration** - Execute Git operations through `@{git_read}` (16 read operations) and `@{git_edit}` (17 write operations) tools in chat
 - 🤖 **Git Assistant** - Intelligent Git workflow assistance via `@{git_bot}` combining read/write operations
 - 🌍 **Multi-language Support** - Generate commit messages in multiple languages
@@ -62,6 +63,15 @@ require("codecompanion").setup({
         -- Commit history context (optional)
         use_commit_history = true,         -- Enable commit history context
         commit_history_count = 10,         -- Number of recent commits for context
+
+        -- Issue ID extraction from branch name (optional)
+        include_issue_id_from_branch = false, -- Enable automatic issue ID extraction
+        issue_id_patterns = {              -- Patterns for extracting issue IDs
+          { pattern = "^bcd%-(%d%d%d%d)", prefix = "BCD", format = "BCD-%s" },
+          { pattern = "MOB%-(%d+)", prefix = "MOB", format = "MOB-%s" },
+          { pattern = "TEC%-(%d+)", prefix = "TEC", format = "TEC-%s" },
+          { pattern = "ENG%-(%d+)", prefix = "ENG", format = "ENG-%s" },
+        },
       }
     }
   }
@@ -191,6 +201,13 @@ opts = {
   git_tool_auto_submit_success = true,      -- Auto-submit success to LLM
   use_commit_history = true,                -- Enable commit history context
   commit_history_count = 10,                -- Number of recent commits for context
+  include_issue_id_from_branch = false,     -- Enable automatic issue ID extraction from branch name
+  issue_id_patterns = {                     -- Patterns for extracting issue IDs from branch names
+    { pattern = "^bcd%-(%d%d%d%d)", prefix = "BCD", format = "BCD-%s" },
+    { pattern = "MOB%-(%d+)", prefix = "MOB", format = "MOB-%s" },
+    { pattern = "TEC%-(%d+)", prefix = "TEC", format = "TEC-%s" },
+    { pattern = "ENG%-(%d+)", prefix = "ENG", format = "ENG-%s" },
+  },
   buffer = {
     enabled = true,                         -- Enable buffer integration
     keymap = "<leader>gc",                 -- Keymap

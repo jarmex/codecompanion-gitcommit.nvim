@@ -11,6 +11,8 @@ function Git.setup(opts)
     exclude_files = {},
     use_commit_history = true,
     commit_history_count = 10,
+    include_issue_id_from_branch = false,
+    issue_id_patterns = {},
   }, opts or {})
 end
 
@@ -390,6 +392,56 @@ end
 ---@return table config Current configuration
 function Git.get_config()
   return vim.deepcopy(config)
+end
+
+---Extract issue ID from current branch name
+---@return string|nil issue_id The extracted issue ID (e.g., "BCD-1234") or nil if not found
+function Git.extract_issue_id_from_branch()
+  -- Check if feature is enabled
+  if not config.include_issue_id_from_branch then
+    return nil
+  end
+
+  -- Check if patterns are configured
+  if not config.issue_id_patterns or #config.issue_id_patterns == 0 then
+    return nil
+  end
+
+  -- Safe git operations
+  local ok, result = pcall(function()
+    if not Git.is_repository() then
+      return nil
+    end
+
+    -- Get current branch name
+    local branch_name = vim.fn.system("git branch --show-current")
+    if vim.v.shell_error ~= 0 then
+      return nil
+    end
+
+    branch_name = trim(branch_name)
+    if branch_name == "" then
+      return nil
+    end
+
+    -- Try each pattern
+    for _, pattern_config in ipairs(config.issue_id_patterns) do
+      local captured = branch_name:match(pattern_config.pattern)
+      if captured then
+        -- Format the issue ID using the configured format
+        local issue_id = string.format(pattern_config.format, captured)
+        return issue_id
+      end
+    end
+
+    return nil
+  end)
+
+  if not ok then
+    return nil
+  end
+
+  return result
 end
 
 return Git

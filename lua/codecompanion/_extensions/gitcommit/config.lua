@@ -37,6 +37,14 @@ M.default_opts = {
   -- History commit context configuration
   use_commit_history = true, -- Enable using commit history as context
   commit_history_count = 10, -- Number of recent commits to include as context
+  -- Issue ID extraction from branch name
+  include_issue_id_from_branch = false, -- Enable automatic issue ID extraction from branch name
+  issue_id_patterns = { -- Patterns for extracting issue IDs from branch names
+    { pattern = "^bcd%-(%d%d%d%d)", prefix = "BCD", format = "BCD-%s" },
+    { pattern = "MOB%-(%d+)", prefix = "MOB", format = "MOB-%s" },
+    { pattern = "TEC%-(%d+)", prefix = "TEC", format = "TEC-%s" },
+    { pattern = "ENG%-(%d+)", prefix = "ENG", format = "ENG-%s" },
+  },
 }
 
 return M

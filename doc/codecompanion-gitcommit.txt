@@ -47,6 +47,7 @@ interface for Git workflow management within CodeCompanion chat buffers.
 • Support for regular commits and amend commits
 • Smart diff analysis with file filtering capabilities
 • Commit history context for consistent styling and patterns
+• Automatic issue ID extraction from branch names
 
 🛠️ Git Tool Integration
 • @{git_read} tool - 16 read-only Git operations (status, log, diff, release notes, etc.)
@@ -109,6 +110,15 @@ Add this extension to your CodeCompanion configuration:
 	        -- Commit history context (optional)
 	        use_commit_history = true,    -- Enable commit history context
 	        commit_history_count = 10,    -- Number of recent commits for context
+
+	        -- Issue ID extraction from branch name (optional)
+	        include_issue_id_from_branch = false, -- Enable automatic issue ID extraction
+	        issue_id_patterns = {              -- Patterns for extracting issue IDs
+	          { pattern = "^bcd%-(%d%d%d%d)", prefix = "BCD", format = "BCD-%s" },
+	          { pattern = "MOB%-(%d+)", prefix = "MOB", format = "MOB-%s" },
+	          { pattern = "TEC%-(%d+)", prefix = "TEC", format = "TEC-%s" },
+	          { pattern = "ENG%-(%d+)", prefix = "ENG", format = "ENG-%s" },
+	        },
 	      }
 	    }
 	  }
@@ -398,6 +408,40 @@ Buffer configuration:
 *commit_history_count*			Type: number, Default: 10
 	Number of recent commits to include as context when use_commit_history
 	is enabled.
+
+Issue ID Extraction:			*codecompanion-gitcommit-issue-id*
+
+*include_issue_id_from_branch*		Type: boolean, Default: false
+	When enabled, automatically extracts issue IDs from branch names and
+	includes them in generated commit messages. The issue ID replaces the
+	conventional commit type prefix (feat, fix, etc.).
+
+*issue_id_patterns*			Type: table, Default: See below
+	A list of patterns for extracting issue IDs from branch names. Each
+	pattern is a table with three fields:
+	• pattern - Lua pattern for matching (with capture group for ID)
+	• prefix - Human-readable prefix name
+	• format - String format for the extracted ID (use %s for the capture)
+
+	Default patterns:
+	{ pattern = "^bcd%-(%d%d%d%d)", prefix = "BCD", format = "BCD-%s" }
+	{ pattern = "MOB%-(%d+)", prefix = "MOB", format = "MOB-%s" }
+	{ pattern = "TEC%-(%d+)", prefix = "TEC", format = "TEC-%s" }
+	{ pattern = "ENG%-(%d+)", prefix = "ENG", format = "ENG-%s" }
+
+	Examples:
+	Branch name: bcd-1234           → Commit: BCD-1234: add new feature
+	Branch name: MOB-456-fix-bug    → Commit: MOB-456: fix login issue
+	Branch name: feature/TEC-789    → Commit: TEC-789: update API
+	Branch name: main               → Commit: feat(api): add feature
+
+	When an issue ID is found, the commit message format changes from:
+		type(scope): description
+	to:
+		ISSUE-ID: description
+
+	The conventional commit type (feat, fix, chore, etc.) is NOT included
+	when an issue ID is present.
 
 ==============================================================================
 9. PROGRAMMATIC API				*codecompanion-gitcommit-api*

@@ -45,8 +45,11 @@ function M.generate_commit_message()
       commit_history = Git.get_commit_history(git_config.commit_history_count)
     end
 
+    -- Extract issue ID from branch name if enabled
+    local issue_id = Git.extract_issue_id_from_branch()
+
     -- Generate commit message
-    Generator.generate_commit_message(diff, lang, commit_history, function(result, error)
+    Generator.generate_commit_message(diff, lang, commit_history, issue_id, function(result, error)
       if error then
         vim.notify("Failed to generate commit message: " .. error, vim.log.levels.ERROR)
         return
@@ -323,6 +326,8 @@ return
       exclude_files = opts.exclude_files,
       use_commit_history = opts.use_commit_history,
       commit_history_count = opts.commit_history_count,
+      include_issue_id_from_branch = opts.include_issue_id_from_branch,
+      issue_id_patterns = opts.issue_id_patterns,
     })
     Generator.setup(opts.adapter, opts.model)
     Buffer.setup(opts.buffer)
@@ -356,8 +361,11 @@ return
         commit_history = Git.get_commit_history(git_config.commit_history_count)
       end
 
+      -- Extract issue ID from branch name if enabled
+      local issue_id = Git.extract_issue_id_from_branch()
+
       -- Generate commit message
-      Generator.generate_commit_message(diff, lang, commit_history, callback)
+      Generator.generate_commit_message(diff, lang, commit_history, issue_id, callback)
     end,
 
     ---Check if current directory is in a git repository
