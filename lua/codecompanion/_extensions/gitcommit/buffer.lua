@@ -1,6 +1,7 @@
 local Langs = require("codecompanion._extensions.gitcommit.langs")
 local Git = require("codecompanion._extensions.gitcommit.git")
 local Generator = require("codecompanion._extensions.gitcommit.generator")
+local Debug = require("codecompanion._extensions.gitcommit.debug")
 
 ---@class CodeCompanion.GitCommit.Buffer
 local Buffer = {}
@@ -163,14 +164,18 @@ end
 ---Generate commit message and insert into gitcommit buffer
 ---@param bufnr number Buffer number
 function Buffer._generate_and_insert_commit_message(bufnr)
+  Debug.trace_enter("buffer", "_generate_and_insert_commit_message", { bufnr = bufnr })
+
   -- Check git repository
   if not Git.is_repository() then
+    Debug.log("buffer", "Not in a git repository")
     vim.notify("Not in a git repository", vim.log.levels.ERROR)
     return
   end
 
   -- Get changes for commit
   local diff, context = Git.get_contextual_diff()
+  Debug.log("buffer", "Got diff", { has_diff = diff ~= nil, context = context })
   if not diff then
     local msg
     if context == "no_changes" then
@@ -178,13 +183,18 @@ function Buffer._generate_and_insert_commit_message(bufnr)
     else
       msg = "Failed to get git changes, context=" .. tostring(context)
     end
+    Debug.error("buffer", "Failed to get diff", { context = context })
     vim.notify(msg, vim.log.levels.ERROR)
     return
   end
 
   Langs.select_lang(function(lang)
+    Debug.log("buffer", "Language selected", { lang = lang })
+
     -- Check if user cancelled language selection
     if lang == nil then
+      Debug.log("buffer", "User cancelled language selection")
+      vim.notify("Commit message generation cancelled", vim.log.levels.WARN)
       return
     end
 
@@ -199,17 +209,24 @@ function Buffer._generate_and_insert_commit_message(bufnr)
 
     -- Extract issue ID from branch name if enabled
     local issue_id = Git.extract_issue_id_from_branch()
+    Debug.log("buffer", "Starting generation", { has_commit_history = commit_history ~= nil, issue_id = issue_id })
 
     -- Generate commit message
     Generator.generate_commit_message(diff, lang, commit_history, issue_id, function(result, error)
+      Debug.checkpoint("buffer_callback", "Generator callback invoked")
+      Debug.log("buffer", "Generator callback", { has_result = result ~= nil, error = error })
+
       if error then
+        Debug.error("buffer", "Generation failed", error)
         vim.notify("Failed to generate commit message: " .. error, vim.log.levels.ERROR)
         return
       end
 
       if result then
+        Debug.log("buffer", "Calling _insert_commit_message", { result_length = #result })
         Buffer._insert_commit_message(bufnr, result)
       else
+        Debug.error("buffer", "Result is nil despite no error")
         vim.notify("Failed to generate commit message", vim.log.levels.ERROR)
       end
     end)
@@ -217,7 +234,10 @@ function Buffer._generate_and_insert_commit_message(bufnr)
 end
 
 function Buffer._insert_commit_message(bufnr, message)
+  Debug.trace_enter("buffer", "_insert_commit_message", { bufnr = bufnr, message_length = #message })
+
   if not vim.api.nvim_buf_is_valid(bufnr) then
+    Debug.error("buffer", "Buffer no longer valid", { bufnr = bufnr })
     vim.notify("Buffer is no longer valid", vim.log.levels.ERROR)
     return
   end
@@ -265,6 +285,7 @@ function Buffer._insert_commit_message(bufnr, message)
   -- Move cursor to beginning of commit message
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
 
+  Debug.log("buffer", "Successfully inserted commit message")
   vim.notify("Commit message generated and inserted!", vim.log.levels.INFO)
 end
 

@@ -73,12 +73,12 @@ local function setup_tools(opts)
   end
 
   local codecompanion_config = require("codecompanion.config")
-  if not (codecompanion_config.strategies and codecompanion_config.strategies.chat) then
+  if not (codecompanion_config.interactions and codecompanion_config.interactions.chat) then
     return
   end
 
-  codecompanion_config.strategies.chat.tools = codecompanion_config.strategies.chat.tools or {}
-  local chat_tools = codecompanion_config.strategies.chat.tools
+  codecompanion_config.interactions.chat.tools = codecompanion_config.interactions.chat.tools or {}
+  local chat_tools = codecompanion_config.interactions.chat.tools
 
   local git_read_enabled = opts.enable_git_read
   local git_edit_enabled = opts.enable_git_edit
@@ -184,7 +184,7 @@ local function setup_slash_commands(opts)
     return
   end
 
-  local slash_commands = require("codecompanion.config").strategies.chat.slash_commands
+  local slash_commands = require("codecompanion.config").interactions.chat.slash_commands
 
   local function get_commit_content(chat, choice)
     local stdout = vim.uv.new_pipe(false)
