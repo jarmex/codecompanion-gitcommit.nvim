@@ -100,7 +100,10 @@ local function send_http_request(client, adapter, payload, callback)
         if chunk and chunk ~= "" then
           -- Use adapter's chat_output handler to process the chunk
           local result = adapter.handlers.chat_output(adapter, chunk)
-          Debug.log("generator", "Processed chunk", { status = result and result.status, has_content = result and result.output and result.output.content ~= nil })
+          Debug.log("generator", "Processed chunk", {
+            status = result and result.status,
+            has_content = result and result.output and result.output.content ~= nil,
+          })
           if result and result.status == CONSTANTS.STATUS_SUCCESS then
             local content = result.output and result.output.content
             if content and content ~= "" then
@@ -180,7 +183,11 @@ local function send_acp_request(client, adapter, messages, callback)
     end)
     :on_complete(function(stop_reason)
       Debug.checkpoint("acp_complete", "Request completed")
-      Debug.log("generator", "ACP on_complete", { has_error = has_error, accumulated_length = #accumulated, stop_reason = stop_reason })
+      Debug.log(
+        "generator",
+        "ACP on_complete",
+        { has_error = has_error, accumulated_length = #accumulated, stop_reason = stop_reason }
+      )
       if not has_error and accumulated ~= "" then
         -- ACP responses are plain text, wrap in expected format
         local cleaned = Generator._clean_commit_message(accumulated)
@@ -225,7 +232,7 @@ function Generator.generate_commit_message(diff, lang, commit_history, issue_id,
     diff_length = #diff,
     lang = lang,
     has_history = commit_history ~= nil,
-    issue_id = issue_id
+    issue_id = issue_id,
   })
 
   -- Validate callback
@@ -300,10 +307,8 @@ end
 
 ---Create prompt for commit message generation
 ---@param diff string The git diff to include in prompt
----@param lang string Language for the commit message
 ---@param commit_history? string[] Recent commit messages for context (optional)
----@param issue_id? string Issue ID to prefix the commit message (optional)
-function Generator._create_prompt(diff, lang, commit_history, issue_id)
+function Generator._base_prompt(diff, lang, commit_history)
   -- Build history context section
   local history_context = ""
   if commit_history and #commit_history > 0 then
@@ -315,7 +320,56 @@ function Generator._create_prompt(diff, lang, commit_history, issue_id)
       .. "\nAnalyze commit history to understand project style, tone, and format patterns. Use this for consistency.\n"
   end
 
-  -- Build issue ID instruction section
+  return string.format(
+    [[You are a commit message generator. Generate exactly ONE Conventional Commit message for the provided git diff.%s
+
+FORMAT:
+type(scope): specific description of WHAT changed
+
+[Optional body - only for non-obvious changes]
+
+Allowed types: feat, fix, docs, style, refactor, perf, test, chore
+Language: %s
+
+CRITICAL RULES:
+1. Respond with ONLY the commit message - no markdown blocks, no explanations
+2. Description must state WHAT was done, not WHY or the effect
+3. AVOID vague verbs: "update", "improve", "clarify", "adjust", "enhance", "fix issues"
+   USE specific verbs: "add", "remove", "rename", "move", "replace", "extract", "inline"
+4. Subject line under 50 chars, body lines under 72 chars
+5. Body is OPTIONAL - omit if subject is self-explanatory
+
+BAD (vague):
+- refactor(api): improve error handling
+- fix(auth): update login logic
+- chore(deps): update dependencies
+
+GOOD (specific):
+- refactor(api): replace try-catch with Result type
+- fix(auth): check token expiry before API call
+- chore(deps): bump axios from 0.21 to 1.6
+
+EXAMPLES:
+
+docs(readme): add installation section
+
+refactor(api): rename getUserData to fetchUser
+
+feat(auth): add OAuth2 token refresh flow
+
+- Store refresh token in secure storage
+- Auto-refresh 5 min before expiry
+
+```diff
+%s
+```]],
+    history_context,
+    lang or "English",
+    diff
+  )
+end
+
+function Generator._issue_id_prompt(issue_id)
   local issue_id_context = ""
   if issue_id and issue_id ~= "" then
     issue_id_context = string.format(
@@ -339,56 +393,23 @@ Examples:
     )
   end
 
-  return string.format(
-    [[You are a commit message generator. Generate exactly ONE complete Conventional Commit message for the provided git diff.%s
+  return issue_id_context
+end
 
-CRITICAL FORMAT REQUIREMENTS:
-1. MUST generate exactly ONE commit message, never multiple messages
-2. MUST include a title line, followed by a blank line, then bullet point descriptions
-3. MUST analyze ALL changes in the diff as a single logical unit
-4. MUST respond with ONLY the commit message, no explanations, markdown code blocks, or extra text
-5. DO NOT wrap the output in markdown code blocks (```) or any other formatting
+---Create prompt for commit message generation
+---@param diff string The git diff to include in prompt
+---@param lang string Language for the commit message
+---@param commit_history? string[] Recent commit messages for context (optional)
+---@param issue_id? string Issue ID to prefix the commit message (optional)
+function Generator._create_prompt(diff, lang, commit_history, issue_id)
+  local base = Generator._base_prompt(diff, lang, commit_history)
+  local issue_id_section = Generator._issue_id_prompt(issue_id)
 
-MANDATORY FORMAT:
-type(scope): brief description
-<blank line>
-- description point 1
-- description point 2
-- description point 3
+  if issue_id_section ~= "" then
+    base = base .. "\n\n" .. issue_id_section
+  end
 
-Allowed types: feat, fix, docs, style, refactor, perf, test, chore
-Language: %s
-
-RULES:
- - Output the commit message directly without any markdown formatting or code blocks
- - The title (first line) must be followed by ONE blank line before the descriptions
- - Each description point must start with a dash (-)
- - If commit history is provided, follow the established patterns and style from recent commits
- - It's best to keep Subject Line under 50 characters.
- - Each line of the body should ideally not exceed 72 characters.
-
-REQUIRED EXAMPLES:
-feat(auth): add OAuth2 integration
-
-- Implement OAuth2 authentication flow
-- Add token refresh mechanism
-- Update user session handling
-fix(api): resolve data validation issues
-
-- Fix null pointer exception in validator
-- Add input sanitization
-- Improve error messages
-Generate ONE complete commit message for this diff:
-```diff
-%s
-```
-
-Return ONLY the commit message in the exact format shown above.%s]],
-    history_context,
-    lang or "English",
-    diff,
-    issue_id_context
-  )
+  return base
 end
 
 return Generator

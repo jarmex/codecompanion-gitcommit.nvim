@@ -3,12 +3,11 @@
 A Neovim plugin extension for CodeCompanion that generates AI-powered Git commit messages following the Conventional Commits specification, with comprehensive Git workflow integration.
 
 > [!IMPORTANT]
-> As of CodeCompanion v17.5.0, variables and tools must be wrapped in curly braces, such as `@{git_read}` or `#{buffer}`
+> Supports CodeCompanion **v17.x** and **v18.0+** (compatibility handled automatically)
 
 ## ✨ Features
 
 - 🤖 **AI Commit Generation** - Generate Conventional Commits compliant messages using CodeCompanion's LLM adapters
-- 🏷️ **Issue ID Extraction** - Automatically extract and include issue IDs from branch names in commit messages
 - 🛠️ **Git Tool Integration** - Execute Git operations through `@{git_read}` (16 read operations) and `@{git_edit}` (17 write operations) tools in chat
 - 🤖 **Git Assistant** - Intelligent Git workflow assistance via `@{git_bot}` combining read/write operations
 - 🌍 **Multi-language Support** - Generate commit messages in multiple languages
@@ -63,15 +62,6 @@ require("codecompanion").setup({
         -- Commit history context (optional)
         use_commit_history = true,         -- Enable commit history context
         commit_history_count = 10,         -- Number of recent commits for context
-
-        -- Issue ID extraction from branch name (optional)
-        include_issue_id_from_branch = false, -- Enable automatic issue ID extraction
-        issue_id_patterns = {              -- Patterns for extracting issue IDs
-          { pattern = "^bcd%-(%d%d%d%d)", prefix = "BCD", format = "BCD-%s" },
-          { pattern = "MOB%-(%d+)", prefix = "MOB", format = "MOB-%s" },
-          { pattern = "TEC%-(%d+)", prefix = "TEC", format = "TEC-%s" },
-          { pattern = "ENG%-(%d+)", prefix = "ENG", format = "ENG-%s" },
-        },
       }
     }
   }
@@ -148,16 +138,19 @@ Use a comprehensive Git assistant that combines read and write operations:
 ### Basic Usage
 
 **1. Generate commit message:**
+
 ```
 :CodeCompanionGitCommit
 ```
 
 **2. GitCommit buffer integration:**
+
 - Run `git commit` to open commit buffer
 - Press `<leader>gc` to generate message (or auto-generates if enabled)
 - Edit and save to complete commit
 
 **3. Chat-based Git workflow:**
+
 ```
 @{git_read} status                              # Check repository status
 @{git_edit} stage --files ["file1.txt", "file2.txt"]  # Stage files
@@ -168,6 +161,7 @@ Use a comprehensive Git assistant that combines read and write operations:
 ```
 
 **4. Generate Release Notes:**
+
 ```
 @{git_read} generate_release_notes                    # Auto-detect latest and previous tag
 @{git_read} generate_release_notes --from_tag "v1.0.0" --to_tag "v1.1.0"  # Specific tags
@@ -201,13 +195,6 @@ opts = {
   git_tool_auto_submit_success = true,      -- Auto-submit success to LLM
   use_commit_history = true,                -- Enable commit history context
   commit_history_count = 10,                -- Number of recent commits for context
-  include_issue_id_from_branch = false,     -- Enable automatic issue ID extraction from branch name
-  issue_id_patterns = {                     -- Patterns for extracting issue IDs from branch names
-    { pattern = "^bcd%-(%d%d%d%d)", prefix = "BCD", format = "BCD-%s" },
-    { pattern = "MOB%-(%d+)", prefix = "MOB", format = "MOB-%s" },
-    { pattern = "TEC%-(%d+)", prefix = "TEC", format = "TEC-%s" },
-    { pattern = "ENG%-(%d+)", prefix = "ENG", format = "ENG-%s" },
-  },
   buffer = {
     enabled = true,                         -- Enable buffer integration
     keymap = "<leader>gc",                 -- Keymap
@@ -282,6 +269,7 @@ Generate comprehensive release notes using AI analysis of your commit history:
 - `marketing` - User-friendly marketing release notes
 
 The AI will analyze your commits to:
+
 - Group changes by type (features, fixes, breaking changes)
 - Generate clear descriptions from commit messages
 - Credit contributors automatically

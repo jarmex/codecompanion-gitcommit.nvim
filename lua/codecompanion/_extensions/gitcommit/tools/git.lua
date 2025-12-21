@@ -1,3 +1,5 @@
+local Git = require("codecompanion._extensions.gitcommit.git")
+
 local M = {}
 
 ---Git tool for CodeCompanion GitCommit extension
@@ -168,13 +170,7 @@ function GitTool.is_ignored(file)
 end
 
 local function is_git_repo()
-  -- Use Neovim built-in vim.fn.system instead of io.popen
-  local ok, result = pcall(function()
-    local cmd = "git rev-parse --is-inside-work-tree"
-    local output = vim.fn.system(cmd)
-    return vim.v.shell_error == 0 and output:match("true") ~= nil
-  end)
-  return ok and result or false
+  return Git.is_repository()
 end
 
 local function execute_git_command(cmd)
@@ -519,15 +515,15 @@ function GitTool.push(remote, branch, force, set_upstream, tags, tag_name)
   -- Handle tag pushing - single tag takes priority over all tags
   if tag_name and vim.trim(tag_name) ~= "" then
     -- Push single tag: git push origin tag_name
-    if remote then
-      cmd = cmd .. " " .. vim.fn.shellescape(remote)
-    end
+    -- Default to "origin" if no remote specified to avoid git interpreting tag_name as remote
+    local push_remote = remote or "origin"
+    cmd = cmd .. " " .. vim.fn.shellescape(push_remote)
     cmd = cmd .. " " .. vim.fn.shellescape(tag_name)
   elseif tags then
     -- Push all tags: git push origin --tags
-    if remote then
-      cmd = cmd .. " " .. vim.fn.shellescape(remote)
-    end
+    -- Default to "origin" if no remote specified
+    local push_remote = remote or "origin"
+    cmd = cmd .. " " .. vim.fn.shellescape(push_remote)
     cmd = cmd .. " --tags"
   else
     -- Regular branch push: git push origin branch
@@ -562,15 +558,13 @@ function GitTool.push_async(remote, branch, force, set_upstream, tags, tag_name,
   -- Handle tag pushing - single tag takes priority over all tags
   if tag_name and vim.trim(tag_name) ~= "" then
     -- Push single tag: git push origin tag_name
-    if remote then
-      table.insert(cmd, remote)
-    end
+    -- Default to "origin" if no remote specified to avoid git interpreting tag_name as remote
+    table.insert(cmd, remote or "origin")
     table.insert(cmd, tag_name)
   elseif tags then
     -- Push all tags: git push origin --tags
-    if remote then
-      table.insert(cmd, remote)
-    end
+    -- Default to "origin" if no remote specified
+    table.insert(cmd, remote or "origin")
     table.insert(cmd, "--tags")
   else
     -- Regular branch push with optional upstream setting
@@ -640,8 +634,94 @@ function GitTool.cherry_pick(commit_hash)
   if not commit_hash then
     return false, "Commit hash is required for cherry-pick"
   end
+
+  if not is_git_repo() then
+    return false, "Not in a git repository"
+  end
+
   local cmd = "git cherry-pick --no-edit " .. vim.fn.shellescape(commit_hash)
-  return execute_git_command(cmd)
+  local output = vim.fn.system(cmd)
+  local exit_code = vim.v.shell_error
+
+  if exit_code == 0 then
+    return true, output
+  else
+    if output:match("CONFLICT") or output:match("conflict") then
+      return false,
+        "Cherry-pick conflict detected. Please resolve the conflicts manually.\n"
+          .. "Options:\n"
+          .. "  • Use 'cherry_pick_continue' after resolving conflicts\n"
+          .. "  • Use 'cherry_pick_abort' to cancel the cherry-pick\n"
+          .. "  • Use 'cherry_pick_skip' to skip this commit"
+    else
+      return false, output
+    end
+  end
+end
+
+---Abort cherry-pick operation
+---@return boolean success, string output
+function GitTool.cherry_pick_abort()
+  if not is_git_repo() then
+    return false, "Not in a git repository"
+  end
+
+  local cmd = "git cherry-pick --abort"
+  local output = vim.fn.system(cmd)
+  local exit_code = vim.v.shell_error
+
+  if exit_code == 0 then
+    return true, "Cherry-pick aborted successfully"
+  else
+    if output:match("no cherry%-pick") or output:match("not in progress") then
+      return false, "No cherry-pick in progress to abort"
+    end
+    return false, output
+  end
+end
+
+---Continue cherry-pick after resolving conflicts
+---@return boolean success, string output
+function GitTool.cherry_pick_continue()
+  if not is_git_repo() then
+    return false, "Not in a git repository"
+  end
+
+  local cmd = "git cherry-pick --continue"
+  local output = vim.fn.system(cmd)
+  local exit_code = vim.v.shell_error
+
+  if exit_code == 0 then
+    return true, "Cherry-pick continued successfully"
+  else
+    if output:match("CONFLICT") or output:match("conflict") then
+      return false, "Conflicts still exist. Please resolve all conflicts before continuing."
+    elseif output:match("no cherry%-pick") or output:match("not in progress") then
+      return false, "No cherry-pick in progress to continue"
+    end
+    return false, output
+  end
+end
+
+---Skip current commit in cherry-pick
+---@return boolean success, string output
+function GitTool.cherry_pick_skip()
+  if not is_git_repo() then
+    return false, "Not in a git repository"
+  end
+
+  local cmd = "git cherry-pick --skip"
+  local output = vim.fn.system(cmd)
+  local exit_code = vim.v.shell_error
+
+  if exit_code == 0 then
+    return true, "Current commit skipped successfully"
+  else
+    if output:match("no cherry%-pick") or output:match("not in progress") then
+      return false, "No cherry-pick in progress to skip"
+    end
+    return false, output
+  end
 end
 
 ---Revert a commit
@@ -720,13 +800,172 @@ function GitTool.merge(branch)
   if exit_code == 0 then
     return true, output
   else
-    if output:match("CONFLICT") then
+    if output:match("CONFLICT") or output:match("conflict") then
       return false,
-        "Merge conflict detected. Please resolve the conflicts manually. You can use 'git merge --abort' to cancel."
+        "Merge conflict detected. Please resolve the conflicts manually.\n"
+          .. "Options:\n"
+          .. "  • Use 'merge_continue' after resolving conflicts\n"
+          .. "  • Use 'merge_abort' to cancel the merge"
     else
       return false, output
     end
   end
+end
+
+---Abort merge operation
+---@return boolean success, string output
+function GitTool.merge_abort()
+  if not is_git_repo() then
+    return false, "Not in a git repository"
+  end
+
+  local cmd = "git merge --abort"
+  local output = vim.fn.system(cmd)
+  local exit_code = vim.v.shell_error
+
+  if exit_code == 0 then
+    return true, "Merge aborted successfully"
+  else
+    if output:match("not merging") or output:match("no merge") then
+      return false, "No merge in progress to abort"
+    end
+    return false, output
+  end
+end
+
+---Continue merge after resolving conflicts
+---@return boolean success, string output
+function GitTool.merge_continue()
+  if not is_git_repo() then
+    return false, "Not in a git repository"
+  end
+
+  local cmd = "git merge --continue"
+  local output = vim.fn.system(cmd)
+  local exit_code = vim.v.shell_error
+
+  if exit_code == 0 then
+    return true, "Merge continued successfully"
+  else
+    if output:match("CONFLICT") or output:match("conflict") then
+      return false, "Conflicts still exist. Please resolve all conflicts before continuing."
+    elseif output:match("not merging") or output:match("no merge") then
+      return false, "No merge in progress to continue"
+    end
+    return false, output
+  end
+end
+
+---Get list of files with merge conflicts
+---@return boolean success, string output, string user_msg, string llm_msg
+function GitTool.get_conflict_status()
+  if not is_git_repo() then
+    local msg = "Not in a git repository"
+    return false, msg, "✗ " .. msg, "<gitConflictStatus>fail: " .. msg .. "</gitConflictStatus>"
+  end
+
+  -- git diff --name-only --diff-filter=U lists unmerged (conflicted) files
+  local cmd = "git diff --name-only --diff-filter=U"
+  local output = vim.fn.system(cmd)
+  local exit_code = vim.v.shell_error
+
+  if exit_code ~= 0 then
+    local msg = "Failed to get conflict status"
+    return false, msg, "✗ " .. msg, "<gitConflictStatus>fail: " .. msg .. "</gitConflictStatus>"
+  end
+
+  local trimmed = vim.trim(output)
+  if trimmed == "" then
+    local msg = "No conflicts found"
+    return true, msg, "✓ " .. msg, "<gitConflictStatus>success: " .. msg .. "</gitConflictStatus>"
+  end
+
+  local files = {}
+  for file in trimmed:gmatch("[^\r\n]+") do
+    if file ~= "" then
+      table.insert(files, file)
+    end
+  end
+
+  local user_msg = string.format("⚠ %d file(s) with conflicts:\n", #files)
+  for _, file in ipairs(files) do
+    user_msg = user_msg .. "  • " .. file .. "\n"
+  end
+
+  local llm_msg =
+    string.format("<gitConflictStatus>success: %d conflicted file(s):\n%s</gitConflictStatus>", #files, trimmed)
+
+  return true, trimmed, user_msg, llm_msg
+end
+
+---Show conflict markers in a specific file
+---@param file_path string Path to the file with conflicts
+---@return boolean success, string output, string user_msg, string llm_msg
+function GitTool.show_conflict(file_path)
+  if not is_git_repo() then
+    local msg = "Not in a git repository"
+    return false, msg, "✗ " .. msg, "<gitConflictShow>fail: " .. msg .. "</gitConflictShow>"
+  end
+
+  if not file_path or vim.trim(file_path) == "" then
+    local msg = "File path is required"
+    return false, msg, "✗ " .. msg, "<gitConflictShow>fail: " .. msg .. "</gitConflictShow>"
+  end
+
+  local stat = vim.uv.fs_stat(file_path)
+  if not stat then
+    local msg = "File not found: " .. file_path
+    return false, msg, "✗ " .. msg, "<gitConflictShow>fail: " .. msg .. "</gitConflictShow>"
+  end
+
+  local fd = vim.uv.fs_open(file_path, "r", 438)
+  if not fd then
+    local msg = "Failed to open file: " .. file_path
+    return false, msg, "✗ " .. msg, "<gitConflictShow>fail: " .. msg .. "</gitConflictShow>"
+  end
+
+  local content = vim.uv.fs_read(fd, stat.size, 0)
+  vim.uv.fs_close(fd)
+
+  if not content then
+    local msg = "Failed to read file: " .. file_path
+    return false, msg, "✗ " .. msg, "<gitConflictShow>fail: " .. msg .. "</gitConflictShow>"
+  end
+
+  if not content:match("<<<<<<< ") then
+    local msg = "No conflict markers found in: " .. file_path
+    return true, msg, "✓ " .. msg, "<gitConflictShow>success: " .. msg .. "</gitConflictShow>"
+  end
+
+  local conflicts = {}
+  local conflict_num = 0
+
+  for conflict_block in content:gmatch("(<<<<<<<.->>>>>>>.-)\n?") do
+    conflict_num = conflict_num + 1
+    table.insert(conflicts, string.format("--- Conflict #%d ---\n%s", conflict_num, conflict_block))
+  end
+
+  if #conflicts == 0 then
+    local msg = "No conflict markers found in: " .. file_path
+    return true, msg, "✓ " .. msg, "<gitConflictShow>success: " .. msg .. "</gitConflictShow>"
+  end
+
+  local conflict_output = table.concat(conflicts, "\n\n")
+  local user_msg = string.format(
+    "⚠ Found %d conflict(s) in %s:\n\n```\n%s\n```\n\nResolve conflicts manually, then use 'stage' followed by 'cherry_pick_continue' or 'merge_continue'.",
+    #conflicts,
+    file_path,
+    conflict_output
+  )
+
+  local llm_msg = string.format(
+    "<gitConflictShow>success: %d conflict(s) in %s:\n%s</gitConflictShow>",
+    #conflicts,
+    file_path,
+    conflict_output
+  )
+
+  return true, conflict_output, user_msg, llm_msg
 end
 
 --- Generate release notes between two tags
@@ -946,6 +1185,102 @@ function GitTool.generate_release_notes(from_tag, to_tag, format)
     .. "</gitReleaseNotes>"
 
   return true, release_notes, user_msg, llm_msg
+end
+
+---Add a new remote
+---@param name string Remote name
+---@param url string Remote URL
+---@return boolean success, string output
+function GitTool.add_remote(name, url)
+  if not name or vim.trim(name) == "" then
+    return false, "Remote name is required"
+  end
+  if not url or vim.trim(url) == "" then
+    return false, "Remote URL is required"
+  end
+  local cmd = "git remote add " .. vim.fn.shellescape(name) .. " " .. vim.fn.shellescape(url)
+  return execute_git_command(cmd)
+end
+
+---Remove a remote
+---@param name string Remote name
+---@return boolean success, string output
+function GitTool.remove_remote(name)
+  if not name or vim.trim(name) == "" then
+    return false, "Remote name is required"
+  end
+  local cmd = "git remote remove " .. vim.fn.shellescape(name)
+  return execute_git_command(cmd)
+end
+
+---Rename a remote
+---@param old_name string Current remote name
+---@param new_name string New remote name
+---@return boolean success, string output
+function GitTool.rename_remote(old_name, new_name)
+  if not old_name or vim.trim(old_name) == "" then
+    return false, "Current remote name is required"
+  end
+  if not new_name or vim.trim(new_name) == "" then
+    return false, "New remote name is required"
+  end
+  local cmd = "git remote rename " .. vim.fn.shellescape(old_name) .. " " .. vim.fn.shellescape(new_name)
+  return execute_git_command(cmd)
+end
+
+---Set remote URL
+---@param name string Remote name
+---@param url string New URL
+---@return boolean success, string output
+function GitTool.set_remote_url(name, url)
+  if not name or vim.trim(name) == "" then
+    return false, "Remote name is required"
+  end
+  if not url or vim.trim(url) == "" then
+    return false, "Remote URL is required"
+  end
+  local cmd = "git remote set-url " .. vim.fn.shellescape(name) .. " " .. vim.fn.shellescape(url)
+  return execute_git_command(cmd)
+end
+
+---Fetch from remote
+---@param remote? string Remote name (default: all remotes)
+---@param branch? string Specific branch to fetch
+---@param prune? boolean Remove remote-tracking references that no longer exist
+---@return boolean success, string output
+function GitTool.fetch(remote, branch, prune)
+  local cmd = "git fetch"
+  if prune then
+    cmd = cmd .. " --prune"
+  end
+  if remote then
+    cmd = cmd .. " " .. vim.fn.shellescape(remote)
+    if branch then
+      cmd = cmd .. " " .. vim.fn.shellescape(branch)
+    end
+  else
+    cmd = cmd .. " --all"
+  end
+  return execute_git_command(cmd)
+end
+
+---Pull from remote
+---@param remote? string Remote name (default: origin)
+---@param branch? string Branch to pull (default: current branch)
+---@param rebase? boolean Use rebase instead of merge
+---@return boolean success, string output
+function GitTool.pull(remote, branch, rebase)
+  local cmd = "git pull"
+  if rebase then
+    cmd = cmd .. " --rebase"
+  end
+  if remote then
+    cmd = cmd .. " " .. vim.fn.shellescape(remote)
+    if branch then
+      cmd = cmd .. " " .. vim.fn.shellescape(branch)
+    end
+  end
+  return execute_git_command(cmd)
 end
 
 M.GitTool = GitTool
