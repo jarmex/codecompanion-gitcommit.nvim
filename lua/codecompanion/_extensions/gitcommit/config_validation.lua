@@ -48,6 +48,8 @@ M.schema = {
   gitcommit_select_count = { "number", "nil" },
   use_commit_history = { "boolean", "nil" },
   commit_history_count = { "number", "nil" },
+  include_issue_id_from_branch = { "boolean", "nil" },
+  issue_id_patterns = { type = "array", items = "table" },
 }
 
 ---Check if value matches a simple type

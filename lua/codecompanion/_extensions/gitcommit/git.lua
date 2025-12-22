@@ -5,6 +5,13 @@ local Git = {}
 
 local config = {}
 
+---Trim whitespace from string
+---@param s string
+---@return string
+local function trim(s)
+  return s:match("^%s*(.-)%s*$")
+end
+
 ---@param opts? table Configuration options
 function Git.setup(opts)
   config = vim.tbl_deep_extend("force", {

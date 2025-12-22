@@ -1,6 +1,7 @@
 local codecompanion_adapter = require("codecompanion.adapters")
 local codecompanion_schema = require("codecompanion.schema")
 local git_utils = require("codecompanion._extensions.gitcommit.git_utils")
+local with_branch_id = require("codecompanion._extensions.gitcommit.issue_id")
 
 ---@class CodeCompanion.GitCommit.Generator
 local Generator = {}
@@ -166,7 +167,9 @@ function Generator._clean_commit_message(message)
 end
 
 ---@param commit_history? string[] Array of recent commit messages for context (optional)
-function Generator.generate_commit_message(diff, lang, commit_history, callback)
+---@param issue_id? string Issue ID to prefix the commit message (optional)
+---@param callback function Callback function to handle the result
+function Generator.generate_commit_message(diff, lang, commit_history, issue_id, callback)
   -- 1. Resolve adapter
   local adapter = codecompanion_adapter.resolve(_adapter_name, {
     model = _model_name,
@@ -181,7 +184,7 @@ function Generator.generate_commit_message(diff, lang, commit_history, callback)
   end
 
   -- 2. Create prompt
-  local prompt = Generator._create_prompt(diff, lang, commit_history)
+  local prompt = Generator._create_prompt(diff, lang, commit_history, issue_id)
 
   -- 3. Prepare messages
   local messages = {
@@ -222,39 +225,14 @@ function Generator.generate_commit_message(diff, lang, commit_history, callback)
   end
 end
 
-function Generator._issue_id_prompt(issue_id)
-  local issue_id_context = ""
-  if issue_id and issue_id ~= "" then
-    issue_id_context = string.format(
-      [[
-
-IMPORTANT: Issue ID Prefix Required
-Please prefix the summary line with the following issue ID: %s
-DO NOT include conventional commit type (feat, fix, chore, etc.) when using the issue ID prefix.
-
-Format: %s: brief description
-
-Examples:
-%s: add OAuth2 integration
-%s: resolve data validation issues
-%s: update documentation]],
-      issue_id,
-      issue_id,
-      issue_id,
-      issue_id,
-      issue_id
-    )
-  end
-
-  return issue_id_context
-end
-
 ---Create prompt for commit message generation
 ---@param diff string The git diff to include in prompt
+---@param lang string Language for the commit message
 ---@param commit_history? string[] Recent commit messages for context (optional)
+---@param issue_id? string Issue ID to prefix the commit message (optional)
 function Generator._create_prompt(diff, lang, commit_history, issue_id)
   local base = git_utils.build_commit_prompt(diff, lang, commit_history)
-  local issue_id_section = Generator._issue_id_prompt(issue_id)
+  local issue_id_section = with_branch_id.generate_with_issue_id_prompt(issue_id)
 
   if issue_id_section ~= "" then
     base = base .. "\n\n" .. issue_id_section

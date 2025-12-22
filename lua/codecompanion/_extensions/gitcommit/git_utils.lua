@@ -293,6 +293,24 @@ CRITICAL RULES:
 4. Subject line under 50 chars, body lines under 72 chars
 5. Body is OPTIONAL - omit if subject is self-explanatory
 
+BAD (vague):
+- refactor(api): improve error handling
+- fix(auth): update login logic
+- chore(deps): update dependencies
+
+GOOD (specific):
+- refactor(api): replace try-catch with Result type
+- fix(auth): check token expiry before API call
+- chore(deps): bump axios from 0.21 to 1.6
+
+EXAMPLES:
+
+docs(readme): add installation section
+
+refactor(api): rename getUserData to fetchUser
+
+feat(auth): add OAuth2 token refresh flow
+
 DIFF:
 %s]],
     history_context,
