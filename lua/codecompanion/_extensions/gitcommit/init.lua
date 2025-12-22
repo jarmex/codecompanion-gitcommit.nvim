@@ -212,10 +212,10 @@ local function setup_slash_commands(opts)
     local output = ""
     local error_output = ""
 
-    local handle = vim.uv.spawn("git", {
+    vim.uv.spawn("git", {
       args = { "show", choice.hash },
       stdio = { nil, stdout, stderr },
-    }, function(code, signal)
+    }, function(code, _signal)
       vim.schedule(function()
         stdout:close()
         stderr:close()
@@ -272,10 +272,10 @@ local function setup_slash_commands(opts)
     local output = ""
     local error_output = ""
 
-    local handle = vim.uv.spawn("git", {
+    vim.uv.spawn("git", {
       args = { "log", "--oneline", "-n", tostring(opts.gitcommit_select_count) },
       stdio = { nil, stdout, stderr },
-    }, function(code, signal)
+    }, function(code, _signal)
       vim.schedule(function()
         stdout:close()
         stderr:close()
