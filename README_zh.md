@@ -3,7 +3,7 @@
 一个为 CodeCompanion 开发的 Neovim 插件扩展，用于生成遵循约定式提交规范的 AI 驱动 Git 提交信息，并提供全面的 Git 工作流集成。
 
 > [!IMPORTANT]
-> 从 CodeCompanion v17.5.0 开始，变量和工具必须用花括号包裹，例如 `@{git_read}` 或 `#{buffer}`
+> 需要 CodeCompanion **v18.0+**
 
 ## ✨ 功能特性
 
@@ -16,6 +16,7 @@
 - 📚 **提交历史上下文** - 使用最近的提交历史来保持一致的风格和模式
 - 🔌 **编程 API** - 为外部集成和自定义工作流提供完整的 API
 - ⚡ **异步操作** - 非阻塞的 Git 操作，具有适当的错误处理
+- 🛡️ **配置验证** - 自动验证配置选项，并提供有用的错误信息
 
 ## 📦 安装
 
@@ -277,6 +278,56 @@ AI 将分析你的提交以：
 - **修改操作**（`@{git_edit}`）需要用户确认
 - **仓库验证**确保操作在有效的 Git 仓库中进行
 - **全面的错误处理**提供有用的错误信息
+
+## 🛡️ 配置验证
+
+扩展会在启动时自动验证配置选项，并提供有用的反馈：
+
+### 验证类型
+
+| 类型 | 行为 |
+|------|----------|
+| **类型错误** | 当配置选项类型错误时警告（例如，应为布尔值却传了字符串） |
+| **未知选项** | 警告拼写错误或不支持的配置选项 |
+| **嵌套验证** | 验证嵌套选项如 `buffer.enabled`、`buffer.keymap` 等 |
+
+### 输出示例
+
+如果配置有错误，你会看到有用的提示信息：
+
+```
+[codecompanion-gitcommit] config.adapter: expected string (optional), got number
+[codecompanion-gitcommit] config.languges: unknown configuration option
+[codecompanion-gitcommit] config.buffer.enabled: expected boolean (optional), got string
+```
+
+### 验证行为
+
+- **非阻塞**：无效配置会产生警告，但不会阻止扩展加载
+- **有用的信息**：每条信息包含字段路径和预期类型
+- **拼写检测**：未知字段会被标记为警告，帮助发现拼写错误
+
+### 编程式验证
+
+你也可以通过编程方式验证配置：
+
+```lua
+local ConfigValidation = require("codecompanion._extensions.gitcommit.config_validation")
+
+-- 验证自定义选项
+local result = ConfigValidation.validate({
+  adapter = "openai",
+  buffer = { enabled = true },
+})
+
+if result.valid then
+  print("配置有效！")
+else
+  for _, issue in ipairs(result.issues) do
+    print(issue.field .. ": " .. issue.message)
+  end
+end
+```
 
 ## 📄 许可证
 

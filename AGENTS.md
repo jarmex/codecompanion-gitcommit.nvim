@@ -5,7 +5,6 @@
 ## Project Overview
 
 **codecompanion-gitcommit.nvim** is a Neovim plugin extension for [CodeCompanion](https://github.com/olimorris/codecompanion.nvim) that provides:
-
 - AI-powered Git commit message generation following Conventional Commits
 - Comprehensive Git workflow tools (`@{git_read}`, `@{git_edit}`, `@{git_bot}`)
 - AI-powered release notes generation
@@ -13,8 +12,7 @@
 - Smart buffer integration for gitcommit filetype
 
 ### Compatibility
-
-- Supports CodeCompanion **v17.x** and **v18.0+** (compatibility handled automatically)
+- Requires CodeCompanion **v18.0+**
 - Lua 5.1+ / LuaJIT
 - Neovim 0.9+
 - Multi-platform (Linux, macOS, WSL, Native Windows)
@@ -75,28 +73,23 @@ init.lua (entry point)
 ### 1. Extension Entry Point (`init.lua`)
 
 The main module that:
-
 - Sets up the extension with CodeCompanion
 - Registers tools (`git_read`, `git_edit`, `ai_release_notes`) and tool groups (`git_bot`)
 - Creates Vim commands (`:CodeCompanionGitCommit`, `:CCGitCommit`)
 - Adds slash commands (`/gitcommit`)
 - Exposes programmatic API via `exports`
 
-**Version Compatibility Pattern:**
-
+**Chat Config Access:**
 ```lua
--- v18+ uses interactions, v17.x uses strategies
+-- v18+ uses interactions
 if codecompanion_config.interactions and codecompanion_config.interactions.chat then
   return codecompanion_config.interactions.chat
-elseif codecompanion_config.strategies and codecompanion_config.strategies.chat then
-  return codecompanion_config.strategies.chat
 end
 ```
 
 ### 2. Git Core Module (`git.lua`)
 
 Handles:
-
 - Repository detection (`is_repository()`)
 - Diff retrieval with file filtering (`get_staged_diff()`, `get_contextual_diff()`)
 - Amend detection (`is_amending()`)
@@ -108,7 +101,6 @@ Handles:
 ### 3. Generator (`generator.lua`)
 
 LLM integration for commit message generation:
-
 - Supports both HTTP and ACP (Anthropic Claude Protocol) adapters
 - Handles streaming responses
 - Cleans markdown code blocks from LLM output
@@ -125,7 +117,6 @@ CodeCompanion tool implementations following the tool schema pattern:
 | `ai_release_notes` | `ai_release_notes.lua` | AI-powered release notes from commit history |
 
 **Tool Schema Structure:**
-
 ```lua
 Tool.schema = {
   type = "function",
@@ -139,13 +130,12 @@ Tool.system_prompt = [[...]]  -- LLM context
 Tool.cmds = { function(self, args) ... end }  -- Execution
 Tool.handlers = { setup, on_exit }
 Tool.output = { prompt, success, error, rejected }
-Tool.opts = { require_approval_before, requires_approval }  -- v18/v17 compat
+Tool.opts = { require_approval_before }  -- Tool options
 ```
 
 ### 5. Validation (`tools/validation.lua`)
 
 Centralized parameter validation with consistent error formatting:
-
 - `require_string()`, `optional_string()`
 - `require_array()`, `optional_integer()`, `optional_boolean()`
 - `require_enum()`, `first_error()`
@@ -155,23 +145,19 @@ Centralized parameter validation with consistent error formatting:
 ## Coding Conventions
 
 ### Style
-
 - **Formatter:** StyLua (config in `stylua.toml`)
 - **Line width:** 120 characters
 - **Indentation:** 2 spaces
 - **Quotes:** Double quotes for strings
 
 ### Naming
-
 - Modules: `PascalCase` for classes (`GitTool`, `Generator`)
 - Functions: `snake_case` (`get_staged_diff`, `format_git_response`)
 - Private functions: Prefix with `_` (`Git._filter_diff`, `Buffer._setup_gitcommit_keymap`)
 - Constants: `UPPER_SNAKE_CASE` (`TOOL_NAME`, `VALID_OPERATIONS`)
 
 ### Type Annotations
-
 Use LuaLS (lua-language-server) annotations:
-
 ```lua
 ---@class ClassName
 ---@field field_name type Description
@@ -182,7 +168,6 @@ function Module.function_name(param_name)
 ```
 
 ### Error Handling Pattern
-
 ```lua
 local ok, result = pcall(function()
   -- risky operation
@@ -194,7 +179,6 @@ return result
 ```
 
 ### Git Command Execution Pattern
-
 ```lua
 local success, output = pcall(vim.fn.system, cmd)
 if not success or vim.v.shell_error ~= 0 then
@@ -205,23 +189,16 @@ return true, output
 
 ---
 
-## Version Compatibility
+## Requirements
 
-The codebase maintains compatibility with CodeCompanion v17.x and v18+:
+This extension requires CodeCompanion **v18.0+**. The codebase uses:
+- `interactions.chat` for chat configuration
+- `require_approval_before` for tool approval
 
-| Feature | v17.x | v18+ |
-|---------|-------|------|
-| Chat config | `strategies.chat` | `interactions.chat` |
-| Approval | `requires_approval` | `require_approval_before` |
-
-**Pattern for dual compatibility:**
-
+**Tool Options Pattern:**
 ```lua
 Tool.opts = {
-  -- v18+ uses require_approval_before
-  require_approval_before = function(_self, _agent) return true end,
-  -- COMPAT(v17): Remove when dropping v17 support
-  requires_approval = function(_self, _agent) return true end,
+  require_approval_before = function(_self, _tools) return true end,
 }
 ```
 
@@ -241,7 +218,6 @@ Tool.opts = {
 ### Adding a New Git Edit Operation
 
 Same pattern as read operations, but in `git_edit.lua`. Remember:
-
 - Edit operations require approval (`require_approval_before = true`)
 - Add appropriate parameter validation
 - Handle async operations if needed (see `push_async`)
@@ -257,23 +233,27 @@ Same pattern as read operations, but in `git_edit.lua`. Remember:
 
 ## Testing & Development
 
-### Running Style Checks
+### Available Mise Tasks
+```bash
+mise run deps       # Install test dependencies (mini.nvim)
+mise run test       # Run all unit tests
+mise run test:file file=tests/test_validation.lua  # Run specific test file
+mise run lint       # Check code formatting with stylua
+mise run fmt        # Format code with stylua
+mise run doc        # Download latest CodeCompanion documentation
+```
 
+### Running Style Checks
 ```bash
 stylua --check .    # Check formatting (used in CI)
 stylua .            # Auto-fix formatting
-```
-
-### Available Make Commands
-
-```bash
-make doc            # Download latest CodeCompanion documentation
+# Or via mise:
+mise run lint       # Check formatting
+mise run fmt        # Auto-fix formatting
 ```
 
 ### Development Setup
-
 The extension must be loaded through CodeCompanion:
-
 ```lua
 require("codecompanion").setup({
   extensions = {
@@ -286,7 +266,6 @@ require("codecompanion").setup({
 ```
 
 ### Debugging Tips
-
 - Use `vim.notify()` for user-facing messages
 - Use `vim.inspect()` for debugging complex data structures
 - Check `vim.v.shell_error` after shell commands
@@ -297,7 +276,6 @@ require("codecompanion").setup({
 ## Common Patterns
 
 ### Formatted Tool Response
-
 ```lua
 local function format_git_response(tool_name, success, output, empty_msg)
   local user_msg, llm_msg
@@ -315,7 +293,6 @@ end
 ```
 
 ### Async Git Operations
-
 ```lua
 vim.fn.jobstart(cmd, {
   on_stdout = function(_, data) ... end,
@@ -331,7 +308,6 @@ vim.fn.jobstart(cmd, {
 ```
 
 ### Buffer Content Manipulation
-
 ```lua
 local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 vim.api.nvim_buf_set_lines(bufnr, start, end_, false, new_lines)
@@ -375,10 +351,10 @@ gitcommit.exports.git_tool.generate_release_notes("v1.0", "v1.1", "markdown")
 
 1. **Always run `stylua --check .`** after making changes to ensure StyLua compliance
 2. **Always run `stylua .`** after modifying code to auto-format
-3. **Maintain v17/v18 compatibility** when modifying tool options
+3. **Use v18+ patterns** when modifying tool options (use `require_approval_before`)
 4. **Use validation.lua** for all parameter validation in tools
 5. **Follow existing patterns** - this codebase is consistent; match the style
 6. **Test with actual CodeCompanion** - the extension requires the parent plugin
 7. **Error messages should be user-friendly** - use icons (✓, ✗, ℹ) for visual feedback
 8 **Document new features** in both code (annotations) and help file
-8. **Update this file (AGENTS.md)** with any new patterns or guidelines you introduce
+9. **Update this file (AGENTS.md)** with any new patterns or guidelines you introduce
