@@ -1,6 +1,9 @@
 local prompts = require("codecompanion._extensions.gitcommit.prompts.release_notes")
 local git_utils = require("codecompanion._extensions.gitcommit.git_utils")
+local Command = require("codecompanion._extensions.gitcommit.tools.command")
+local normalize_output = require("codecompanion._extensions.gitcommit.tools.output").normalize_output
 
+local CommandExecutor = Command.CommandExecutor
 local shell_quote = git_utils.shell_quote
 
 ---@class CodeCompanion.GitCommit.Tools.AIReleaseNotes: CodeCompanion.Tools.Tool
@@ -17,19 +20,20 @@ AIReleaseNotes.schema = {
       type = "object",
       properties = {
         from_tag = {
-          type = "string",
+          type = { "string", "null" },
           description = "Starting tag/version (if not provided, uses second latest tag)",
         },
         to_tag = {
-          type = "string",
+          type = { "string", "null" },
           description = "Ending tag/version (if not provided, uses latest tag or HEAD)",
         },
         style = {
-          type = "string",
+          type = { "string", "null" },
           enum = { "detailed", "concise", "changelog", "marketing" },
-          description = "Style of release notes to generate",
+          description = "Style of release notes to generate. Default: detailed",
         },
       },
+      required = { "from_tag", "to_tag", "style" },
       additionalProperties = false,
     },
     strict = true,
@@ -51,7 +55,9 @@ Output styles:
 - changelog: Developer-focused changelog format
 - marketing: User-friendly marketing release notes]]
 
--- Helper function to get commit details with diffs
+---@param from_ref string Starting reference (tag or commit hash)
+---@param to_ref string Ending reference (tag or commit hash or HEAD)
+---@return table|nil, string|nil Commits array and error message
 local function get_detailed_commits(from_ref, to_ref)
   -- Git range A..B = commits reachable from B but not from A
   -- This correctly excludes from_ref itself and includes up to to_ref
@@ -63,8 +69,8 @@ local function get_detailed_commits(from_ref, to_ref)
   local format_str = shell_quote("%H||%s||%an||%b" .. separator)
   local commit_cmd = string.format("git log --pretty=format:%s %s", format_str, escaped_range)
 
-  local success, output = pcall(vim.fn.system, commit_cmd)
-  if not success or vim.v.shell_error ~= 0 then
+  local success, output = CommandExecutor.run(commit_cmd)
+  if not success then
     return nil, "Failed to get commit history"
   end
 
@@ -79,12 +85,12 @@ local function get_detailed_commits(from_ref, to_ref)
 
   for _, entry in ipairs(commit_entries) do
     if entry and vim.trim(entry) ~= "" then
-      -- Find the first non-empty line with commit info
+      -- Find first non-empty line with commit info
       local lines = vim.split(entry, "\n")
       local commit_line = nil
       local body_start_idx = 1
 
-      -- Find the line with the commit info (has || separators)
+      -- Find line with commit info (has || separators)
       for i, line in ipairs(lines) do
         if line:match("||") then
           commit_line = line
@@ -145,8 +151,8 @@ AIReleaseNotes.cmds = {
     -- Get tags if not specified
     if not to_tag or not from_tag then
       -- Try to get tags sorted by version
-      local success, tags_output = pcall(vim.fn.system, "git tag --sort=-version:refname")
-      if success and vim.v.shell_error == 0 and tags_output and vim.trim(tags_output) ~= "" then
+      local success, tags_output = CommandExecutor.run("git tag --sort=-version:refname")
+      if success and tags_output and vim.trim(tags_output) ~= "" then
         local tags = {}
         for tag in tags_output:gmatch("[^\r\n]+") do
           local trimmed = vim.trim(tag)
@@ -171,8 +177,8 @@ AIReleaseNotes.cmds = {
           elseif #tags == 1 then
             -- Only one tag, get first commit as starting point
             local first_commit_cmd = "git rev-list --max-parents=0 HEAD"
-            local fc_success, first_commit_output = pcall(vim.fn.system, first_commit_cmd)
-            if fc_success and vim.v.shell_error == 0 then
+            local fc_success, first_commit_output = CommandExecutor.run(first_commit_cmd)
+            if fc_success and first_commit_output and vim.trim(first_commit_output) ~= "" then
               from_tag = vim.trim(first_commit_output):sub(1, 8)
             else
               -- Fallback to 10 commits ago
@@ -218,13 +224,13 @@ AIReleaseNotes.handlers = {
 AIReleaseNotes.output = {
   success = function(self, tools, cmd, stdout)
     local chat = tools.chat
-    local output = stdout and #stdout > 0 and vim.iter(stdout):flatten():join("\n") or ""
+    local output = normalize_output(stdout)
     local user_msg = "Release notes generated"
     chat:add_tool_output(self, output, user_msg)
   end,
   error = function(self, tools, cmd, stderr, stdout)
     local chat = tools.chat
-    local errors = stderr and #stderr > 0 and vim.iter(stderr):flatten():join("\n") or "Unknown error"
+    local errors = normalize_output(stderr, "Unknown error")
     local user_msg = "Release notes generation failed"
     chat:add_tool_output(self, errors, user_msg)
   end,

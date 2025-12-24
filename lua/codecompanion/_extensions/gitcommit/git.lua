@@ -47,8 +47,7 @@ function Git.is_repository()
   end
 
   local function check_git_dir(path)
-    local sep = package.config:sub(1, 1)
-    local git_path = path .. sep .. ".git"
+    local git_path = GitUtils.path_join(path, ".git")
     local stat = vim.uv.fs_stat(git_path)
     return stat ~= nil
   end
@@ -67,8 +66,7 @@ function Git.is_repository()
     check_dir = parent
   end
 
-  local redirect = (vim.uv.os_uname().sysname == "Windows_NT") and " 2>nul" or " 2>/dev/null"
-  local cmd = "git rev-parse --is-inside-work-tree" .. redirect
+  local cmd = { "git", "rev-parse", "--is-inside-work-tree" }
   local result = vim.fn.system(cmd)
   local is_repo = vim.v.shell_error == 0 and vim.trim(result) == "true"
 
@@ -87,15 +85,13 @@ function Git.is_amending()
       return false
     end
 
-    local path_sep = package.config:sub(1, 1)
-    local commit_editmsg = git_dir .. path_sep .. "COMMIT_EDITMSG"
+    local commit_editmsg = GitUtils.path_join(git_dir, "COMMIT_EDITMSG")
     local stat = vim.uv.fs_stat(commit_editmsg)
     if not stat then
       return false
     end
 
-    local redirect = (vim.uv.os_uname().sysname == "Windows_NT") and " 2>nul" or " 2>/dev/null"
-    vim.fn.system("git rev-parse --verify HEAD" .. redirect)
+    vim.fn.system({ "git", "rev-parse", "--verify", "HEAD" })
     if vim.v.shell_error ~= 0 then
       return false
     end
@@ -194,7 +190,13 @@ function Git.get_contextual_diff()
     end
 
     local all_local_diff = vim.fn.system("git diff --no-ext-diff HEAD")
-    if vim.v.shell_error == 0 and GitUtils.trim(all_local_diff) ~= "" then
+    if vim.v.shell_error ~= 0 then
+      all_local_diff = vim.fn.system("git diff --no-ext-diff")
+      if vim.v.shell_error ~= 0 then
+        return nil, "git_operation_failed"
+      end
+    end
+    if GitUtils.trim(all_local_diff) ~= "" then
       local filtered_diff = Git._filter_diff(all_local_diff)
       if GitUtils.trim(filtered_diff) ~= "" then
         return filtered_diff, "unstaged_or_all_local"
